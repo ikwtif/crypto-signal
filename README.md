@@ -1,6 +1,6 @@
 # Crypto Signals
 
-Development branch to testing new features. If you are looking for the latest stable version check the master branch.
+Development branch to testing new features. This develop version has a lot of improvements and fixes over master branch. The recommendation is that you use the code in this branch.
 
 ## Notable Changes
 - It creates candle bar charts with MAs, RSI and MACD. These images can be sent as part of a Telegram notification or a Webhook call.
@@ -12,6 +12,7 @@ Development branch to testing new features. If you are looking for the latest st
 - New config values "hot_label" and "cold_label" for each indicator setup to set custom texts instead of the typical "hot" and "cold".
 - New indicator ADX (Average Directional Index)
 - New indicator Klinger Oscillator
+- New indicator MACD Cross
 
 
 ## Installing And Running
@@ -97,7 +98,31 @@ exchanges:
         ....
 ```
 
-Finally, if you want prices in your notification messages, you can use a new variable "prices".
+When using all_pairs we can exclude some pairs in particular. For example, in the following config, we are tracking all USDT pairs in Binance, except the other stable coins.
+
+```
+exchanges:
+    binance:
+        required:
+            enabled: true
+        all_pairs:
+            - USDT
+        exclude: 
+          - USDC
+          - PAX
+          - BUSD            
+    bittrex:
+        required:
+            enabled: false
+        all_pairs:
+            - ETH
+        ....
+```
+
+
+#### Show me the price!
+
+If you want prices in your notification messages, you can use the "prices" variable.
 
 ```
 notifiers:
@@ -452,9 +477,26 @@ indicators:
           mute_cold: false
 ```
 
-Because this indicator is commonly used in conjunction with MFI indicator, such signal has been added as part of the configuration. This way, the values of both indicators can be read together. 
 
-Important: For this indicator the hot/cold config values are mandatory.
+#### MACD Cross
+
+The existing "macd" indicator always sends hot signals when the macd > 0, and cold signals when macd < 0. I repeat, always. Perhaps this is not the desired behavior and you only want to receive notifications when macd crosses the signal line, then this new MACD Cross indicator is the appropriate.
+
+```
+indicators:
+  macd_cross:
+    - enabled: true
+      candle_period: 4h
+      alert_enabled: true
+      alert_frequency: always
+      signal:
+        - macd
+        - signal
+      hot_label: 'Uptrend is coming'
+      cold_label: 'Downtred is coming'
+      indicator_label: 'MACD Cross 4h'
+      mute_cold: false
+```
 
 #### Chart images on webhook
 
@@ -525,3 +567,49 @@ So, in the message template the "hot_cold_label" variable will have one of the t
 ```
 template: "[{{indicator_label}}] **{{hot_cold_label}}** {{market}}  Prices: [{{prices}}]"  
 ```
+
+
+### Price Values
+
+To use this feature it is necessary to configure "ohlcv" informant for each candle period of your indicators. For example, this config is used to get High, Low and Close prices for 1h and 4h indicators.
+
+```
+informants:
+    ....
+    bollinger_bands:
+        - enabled: false
+    ohlcv:
+        - enabled: true
+          signal:
+            - high
+            - low
+            - close
+          candle_period: 1h
+          period_count: 14
+        - enabled: true
+          signal:
+            - high
+            - low
+            - close
+          candle_period: 4h
+          period_count: 14
+          
+```
+
+Then you can use the "price_value" variable to have the values of prices and be able to do some operations on them.
+
+```
+notifiers:
+    telegram:
+        required:
+            token: 580514307:AAETsNsxs4QCdyEZ59vVROLlBxxxxx
+            chat_id: 2073900000
+        optional:
+            parse_mode: html
+            template: "{{ market }} 
+            BUY {{ price_value.close }} 
+            SL: {{ decimal_format|format(price_value.low * 0.9) }} 
+            TP: {{ decimal_format|format(price_value.close * 1.02) }} {{ decimal_format|format(price_value.close * 1.04) }} "
+```
+
+The code for "decimal_format" and "format" is necessary to obtain the prices formatted with the corresponding zeros.
